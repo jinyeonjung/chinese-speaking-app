@@ -4,99 +4,300 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <title>중국어 말하기 마이크 테스트</title>
+  <title>중국어 AI 말하기 형성평가</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk@latest/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
 
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f4f6f8;
-      margin: 0;
-      padding: 30px 20px;
+    * {
+      box-sizing: border-box;
     }
 
-    .box {
-      max-width: 600px;
-      margin: auto;
-      background: white;
-      padding: 30px;
-      border-radius: 18px;
-      text-align: center;
+    body {
+      margin: 0;
+      background: #f3f5f8;
+      font-family: Arial, "Noto Sans KR", sans-serif;
+      color: #222;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 28px 18px 60px;
     }
 
     h1 {
-      font-size: 25px;
+      font-size: 28px;
+      text-align: center;
+      margin-bottom: 8px;
     }
 
-    .chinese {
-      font-size: 32px;
-      margin: 35px 0 8px;
+    .subtitle {
+      text-align: center;
+      color: #777;
+      margin-bottom: 24px;
     }
 
-    .pinyin {
-      font-size: 19px;
-      color: #666;
-      margin-bottom: 30px;
+    .card {
+      background: white;
+      border-radius: 20px;
+      padding: 28px;
+      margin-bottom: 18px;
+      box-shadow: 0 3px 15px rgba(0,0,0,.05);
+    }
+
+    input {
+      width: 100%;
+      padding: 15px;
+      margin-top: 10px;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      font-size: 17px;
     }
 
     button {
       width: 100%;
-      padding: 17px;
-      margin-top: 12px;
       border: 0;
-      border-radius: 10px;
-      font-size: 18px;
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 12px;
+      font-size: 17px;
+      cursor: pointer;
     }
 
-    .listen {
+    button:disabled {
+      opacity: .55;
+    }
+
+    .primary {
+      background: #4d9a55;
+      color: white;
+    }
+
+    .secondary {
       background: #e8edf3;
+      color: #222;
     }
 
-    .record {
-      background: #42964e;
+    .danger {
+      background: #db6154;
       color: white;
     }
 
-    .stop {
-      background: #e4574d;
-      color: white;
+    #testCard,
+    #finishCard {
+      display: none;
     }
 
-    #result {
-      margin-top: 25px;
-      padding: 15px;
-      background: #f5f5f5;
-      border-radius: 10px;
+    #progress {
+      color: #666;
+      margin-bottom: 20px;
+    }
+
+    #chinese {
+      font-size: 35px;
+      text-align: center;
+      margin: 28px 0 10px;
+    }
+
+    #pinyin {
+      font-size: 21px;
+      color: #777;
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    #statusBox {
+      margin-top: 20px;
+      padding: 16px;
+      background: #f5f6f8;
+      border-radius: 12px;
+      text-align: center;
       line-height: 1.6;
+    }
+
+    #resultArea {
+      display: none;
+      margin-top: 20px;
+      background: #f7f8fa;
+      padding: 18px;
+      border-radius: 14px;
+    }
+
+    .wordArea {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 15px;
+    }
+
+    .word {
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-weight: bold;
+    }
+
+    .correct {
+      background: #e4f5e7;
+      color: #257b35;
+    }
+
+    .wrong {
+      background: #fde7e5;
+      color: #c63830;
+    }
+
+    .score {
+      text-align: center;
+      color: #555;
+      line-height: 1.7;
+      margin-top: 15px;
+    }
+
+    .message {
+      text-align: center;
+      font-weight: bold;
+      margin-top: 16px;
+      line-height: 1.6;
+    }
+
+    .small {
+      color: #777;
+      font-size: 14px;
+      margin-top: 12px;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .success {
+      color: #237a35;
+    }
+
+    .error {
+      color: #c63830;
     }
   </style>
 </head>
 
 <body>
 
-<div class="box">
+<div class="container">
 
   <h1>🇨🇳 중국어 AI 말하기 형성평가</h1>
+  <div class="subtitle">중국어회화 1단원</div>
 
-  <div class="chinese">
-    你好！我叫张丽丽。
+
+  <!-- 학생 정보 -->
+
+  <div class="card" id="loginCard">
+
+    <h2>학생 정보</h2>
+
+    <input
+      id="studentNumber"
+      type="text"
+      inputmode="numeric"
+      placeholder="학번">
+
+    <input
+      id="studentName"
+      type="text"
+      placeholder="이름">
+
+    <button
+      class="primary"
+      onclick="startTest()">
+      시작하기
+    </button>
+
   </div>
 
-  <div class="pinyin">
-    Nǐ hǎo! Wǒ jiào Zhāng Lìli.
+
+  <!-- 평가 -->
+
+  <div class="card" id="testCard">
+
+    <div id="progress"></div>
+
+    <div id="chinese"></div>
+
+    <div id="pinyin"></div>
+
+    <button
+      class="secondary"
+      onclick="playAudio()">
+      🔊 음원 듣기
+    </button>
+
+    <button
+      class="primary"
+      id="recordButton"
+      onclick="startAssessment()">
+      🎤 말하기 시작
+    </button>
+
+    <div id="statusBox">
+      음원을 들은 뒤 말하기 버튼을 눌러주세요.
+    </div>
+
+    <div id="resultArea">
+
+      <div id="recognizedText"></div>
+
+      <div
+        class="wordArea"
+        id="wordArea">
+      </div>
+
+      <div
+        class="score"
+        id="scoreArea">
+      </div>
+
+      <div
+        class="message"
+        id="messageArea">
+      </div>
+
+    </div>
+
+    <button
+      class="primary"
+      id="nextButton"
+      onclick="nextQuestion()"
+      style="display:none;">
+      다음 문장
+    </button>
+
+    <div class="small">
+      빨간색으로 표시된 단어는 다시 연습해보세요.<br>
+      녹음 파일은 저장하지 않습니다.
+    </div>
+
   </div>
 
-  <button class="listen" onclick="playChinese()">
-    🔊 음원 듣기
-  </button>
 
-  <button id="recordButton"
-          class="record"
-          onclick="toggleRecording()">
-    🎤 말하기 시작
-  </button>
+  <!-- 완료 -->
 
-  <div id="result">
-    마이크 작동 여부를 확인합니다.
+  <div class="card" id="finishCard">
+
+    <h2>🎉 평가 완료</h2>
+
+    <div id="summary"></div>
+
+    <button
+      class="primary"
+      id="submitButton"
+      onclick="submitResult()">
+      선생님에게 제출
+    </button>
+
+    <div
+      class="message"
+      id="submitMessage">
+    </div>
+
   </div>
 
 </div>
@@ -104,89 +305,1471 @@
 
 <script>
 
-let recorder;
-let stream;
-let recording = false;
+/* =========================================================
+   Apps Script API 주소
+========================================================= */
 
-function playChinese() {
-
-  speechSynthesis.cancel();
-
-  const utterance =
-    new SpeechSynthesisUtterance(
-      "你好！我叫张丽丽。"
-    );
-
-  utterance.lang = "zh-CN";
-  utterance.rate = 0.8;
-
-  speechSynthesis.speak(utterance);
-}
+const API_URL =
+  "https://script.google.com/macros/s/AKfycbw-UgmPRsoOgOVT9bIG4XBJ1nD6yaaS4hfWpU0heTXaSkxPKQZaPvdyVlEXwCwHEpLaGA/exec";
 
 
-async function toggleRecording() {
+/* =========================================================
+   문항
+========================================================= */
 
-  if (recording) {
+const sentences = [
 
-    recorder.stop();
+  {
+    chinese: "你好！我叫张丽丽。",
+    pinyin: "Nǐ hǎo! Wǒ jiào Zhāng Lìli.",
+    keywords: ["你好", "我叫", "张丽丽"]
+  },
 
-    stream.getTracks().forEach(
-      track => track.stop()
-    );
+  {
+    chinese: "欢迎你到韩国来。",
+    pinyin: "Huānyíng nǐ dào Hánguó lái.",
+    keywords: ["欢迎", "韩国", "来"]
+  },
 
-    recording = false;
+  {
+    chinese: "谢谢你！",
+    pinyin: "Xièxie nǐ!",
+    keywords: ["谢谢"]
+  },
 
-    const button =
-      document.getElementById("recordButton");
+  {
+    chinese: "这是我的朋友。",
+    pinyin: "Zhè shì wǒ de péngyou.",
+    keywords: ["这是", "我的", "朋友"]
+  },
 
-    button.textContent =
-      "🎤 다시 말하기";
+  {
+    chinese: "韩国生活怎么样？",
+    pinyin: "Hánguó shēnghuó zěnmeyàng?",
+    keywords: ["韩国", "生活", "怎么样"]
+  },
 
-    button.className =
-      "record";
+  {
+    chinese: "还好！",
+    pinyin: "Hái hǎo!",
+    keywords: ["还好"]
+  }
+
+];
+
+
+const WORD_PASS_SCORE = 70;
+const SENTENCE_PASS_SCORE = 70;
+
+
+let currentQuestion = 0;
+
+let studentNumber = "";
+let studentName = "";
+
+let sentenceStatus =
+  Array(sentences.length).fill("");
+
+let attemptCounts =
+  Array(sentences.length).fill(0);
+
+let errorCounts = {};
+
+let totalAttempts = 0;
+
+let recognizer = null;
+
+
+/* =========================================================
+   시작
+========================================================= */
+
+function startTest() {
+
+  studentNumber =
+    document
+      .getElementById("studentNumber")
+      .value
+      .trim();
+
+  studentName =
+    document
+      .getElementById("studentName")
+      .value
+      .trim();
+
+
+  if (!studentNumber || !studentName) {
+
+    alert("학번과 이름을 모두 입력해주세요.");
 
     return;
   }
 
 
+  document
+    .getElementById("loginCard")
+    .style.display =
+      "none";
+
+
+  document
+    .getElementById("testCard")
+    .style.display =
+      "block";
+
+
+  showQuestion();
+
+}
+
+
+/* =========================================================
+   문항 표시
+========================================================= */
+
+function showQuestion() {
+
+  const q =
+    sentences[currentQuestion];
+
+
+  document
+    .getElementById("progress")
+    .textContent =
+      (currentQuestion + 1) +
+      " / " +
+      sentences.length;
+
+
+  document
+    .getElementById("chinese")
+    .textContent =
+      q.chinese;
+
+
+  document
+    .getElementById("pinyin")
+    .textContent =
+      q.pinyin;
+
+
+  document
+    .getElementById("statusBox")
+    .innerHTML =
+      "음원을 들은 뒤 말하기 버튼을 눌러주세요.";
+
+
+  document
+    .getElementById("resultArea")
+    .style.display =
+      "none";
+
+
+  document
+    .getElementById("nextButton")
+    .style.display =
+      "none";
+
+
+  const button =
+    document
+      .getElementById("recordButton");
+
+
+  button.disabled = false;
+
+  button.textContent =
+    "🎤 말하기 시작";
+
+  button.className =
+    "primary";
+
+}
+
+
+/* =========================================================
+   중국어 음원
+========================================================= */
+
+function playAudio() {
+
+  speechSynthesis.cancel();
+
+
+  const utterance =
+    new SpeechSynthesisUtterance(
+      sentences[currentQuestion].chinese
+    );
+
+
+  utterance.lang =
+    "zh-CN";
+
+  utterance.rate =
+    0.78;
+
+
+  speechSynthesis.speak(
+    utterance
+  );
+
+}
+
+
+/* =========================================================
+   JSONP 호출
+========================================================= */
+
+function jsonpRequest(action, params = {}) {
+
+  return new Promise(
+    function(resolve, reject) {
+
+      const callbackName =
+        "cb_" +
+        Date.now() +
+        "_" +
+        Math.floor(
+          Math.random() * 100000
+        );
+
+
+      const script =
+        document.createElement("script");
+
+
+      const query =
+        new URLSearchParams();
+
+
+      query.set(
+        "action",
+        action
+      );
+
+
+      query.set(
+        "callback",
+        callbackName
+      );
+
+
+      Object.keys(params)
+        .forEach(
+          function(key) {
+
+            query.set(
+              key,
+              params[key]
+            );
+
+          }
+        );
+
+
+      const cleanup =
+        function() {
+
+          delete window[
+            callbackName
+          ];
+
+          if (
+            script.parentNode
+          ) {
+            script.parentNode
+              .removeChild(
+                script
+              );
+          }
+
+        };
+
+
+      window[
+        callbackName
+      ] =
+        function(data) {
+
+          cleanup();
+
+          resolve(data);
+
+        };
+
+
+      script.onerror =
+        function() {
+
+          cleanup();
+
+          reject(
+            new Error(
+              "Apps Script 연결 실패"
+            )
+          );
+
+        };
+
+
+      script.src =
+        API_URL +
+        "?" +
+        query.toString();
+
+
+      document.body
+        .appendChild(
+          script
+        );
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   Azure 토큰
+========================================================= */
+
+async function getSpeechToken() {
+
+  const result =
+    await jsonpRequest(
+      "token"
+    );
+
+
+  if (
+    !result ||
+    !result.success
+  ) {
+
+    throw new Error(
+      result &&
+      result.message
+        ? result.message
+        : "Azure 인증 토큰을 받을 수 없습니다."
+    );
+
+  }
+
+
+  return result;
+
+}
+
+
+/* =========================================================
+   발음평가 시작
+========================================================= */
+
+async function startAssessment() {
+
+  const button =
+    document
+      .getElementById(
+        "recordButton"
+      );
+
+
+  button.disabled =
+    true;
+
+
+  button.textContent =
+    "🎙️ 마이크 준비 중...";
+
+
+  document
+    .getElementById(
+      "statusBox"
+    )
+    .innerHTML =
+      "Azure AI에 연결하고 있습니다...";
+
+
+  document
+    .getElementById(
+      "resultArea"
+    )
+    .style.display =
+      "none";
+
+
   try {
 
-    stream =
-      await navigator.mediaDevices.getUserMedia({
-        audio: true
-      });
+    if (
+      typeof SpeechSDK ===
+      "undefined"
+    ) {
 
-    recorder =
-      new MediaRecorder(stream);
+      throw new Error(
+        "Azure Speech SDK를 불러오지 못했습니다."
+      );
 
-    recorder.start();
+    }
 
-    recording = true;
 
-    const button =
-      document.getElementById("recordButton");
+    const auth =
+      await getSpeechToken();
+
+
+    const speechConfig =
+      SpeechSDK.SpeechConfig
+        .fromAuthorizationToken(
+          auth.token,
+          auth.region
+        );
+
+
+    speechConfig
+      .speechRecognitionLanguage =
+        "zh-CN";
+
+
+    const audioConfig =
+      SpeechSDK.AudioConfig
+        .fromDefaultMicrophoneInput();
+
+
+    const pronunciationConfig =
+      new SpeechSDK
+        .PronunciationAssessmentConfig(
+
+          sentences[currentQuestion]
+            .chinese,
+
+          SpeechSDK
+            .PronunciationAssessmentGradingSystem
+            .HundredMark,
+
+          SpeechSDK
+            .PronunciationAssessmentGranularity
+            .Word,
+
+          true
+
+        );
+
+
+    recognizer =
+      new SpeechSDK
+        .SpeechRecognizer(
+
+          speechConfig,
+
+          audioConfig
+
+        );
+
+
+    pronunciationConfig
+      .applyTo(
+        recognizer
+      );
+
 
     button.textContent =
-      "⏹ 말하기 끝내기";
-
-    button.className =
-      "stop";
+      "🎙️ 지금 말하세요";
 
 
-    document.getElementById("result").innerHTML =
-      "✅ <strong>마이크 연결 성공</strong><br>" +
-      "지금 말해보세요.";
+    document
+      .getElementById(
+        "statusBox"
+      )
+      .innerHTML =
+        "🎤 <strong>듣고 있습니다.</strong><br>" +
+        "문장을 자연스럽게 말해주세요.";
+
+
+    totalAttempts++;
+
+    attemptCounts[
+      currentQuestion
+    ]++;
+
+
+    recognizer
+      .recognizeOnceAsync(
+
+        function(result) {
+
+          handleRecognitionResult(
+            result
+          );
+
+
+          closeRecognizer();
+
+        },
+
+        function(error) {
+
+          console.error(
+            error
+          );
+
+
+          showAssessmentError(
+            error
+          );
+
+
+          closeRecognizer();
+
+        }
+
+      );
+
+
+  } catch (error) {
+
+    console.error(
+      error
+    );
+
+
+    showAssessmentError(
+      error.message ||
+      String(error)
+    );
 
   }
 
-  catch(error) {
+}
 
-    document.getElementById("result").innerHTML =
-      "❌ 마이크 오류<br>" +
-      error.name +
-      "<br>" +
-      error.message;
+
+/* =========================================================
+   Azure 결과 처리
+========================================================= */
+
+function handleRecognitionResult(result) {
+
+  const button =
+    document
+      .getElementById(
+        "recordButton"
+      );
+
+
+  button.disabled =
+    false;
+
+
+  button.textContent =
+    "🎤 다시 말하기";
+
+
+  if (
+    result.reason !==
+    SpeechSDK.ResultReason
+      .RecognizedSpeech
+  ) {
+
+    showAssessmentError(
+      "음성을 정확히 인식하지 못했어요. 다시 말해보세요."
+    );
+
+    return;
   }
+
+
+  let rawJson = null;
+
+
+  try {
+
+    rawJson =
+      result.properties
+        .getProperty(
+          SpeechSDK
+            .PropertyId
+            .SpeechServiceResponse_JsonResult
+        );
+
+  } catch (e) {
+
+    console.error(e);
+
+  }
+
+
+  let json = {};
+
+
+  try {
+
+    json =
+      rawJson
+        ? JSON.parse(
+            rawJson
+          )
+        : {};
+
+  } catch (e) {
+
+    console.error(e);
+
+  }
+
+
+  const pronunciationResult =
+    SpeechSDK
+      .PronunciationAssessmentResult
+      .fromResult(
+        result
+      );
+
+
+  const best =
+    (
+      json.NBest &&
+      json.NBest.length
+    )
+      ? json.NBest[0]
+      : {};
+
+
+  const recognizedText =
+    best.Display ||
+    best.DisplayText ||
+    result.text ||
+    "";
+
+
+  const azureWords =
+    best.Words ||
+    [];
+
+
+  evaluateSentence(
+    recognizedText,
+    azureWords,
+    pronunciationResult
+  );
+
+}
+
+
+/* =========================================================
+   문장 판정
+========================================================= */
+
+function evaluateSentence(
+  recognizedText,
+  azureWords,
+  pa
+) {
+
+  const q =
+    sentences[
+      currentQuestion
+    ];
+
+
+  const recognized =
+    normalizeText(
+      recognizedText
+    );
+
+
+  const evaluations =
+    q.keywords.map(
+      function(keyword) {
+
+        return evaluateKeyword(
+          keyword,
+          azureWords,
+          recognized
+        );
+
+      }
+    );
+
+
+  let allPassed =
+    true;
+
+
+  evaluations
+    .forEach(
+      function(item) {
+
+        if (!item.passed) {
+
+          allPassed =
+            false;
+
+
+          errorCounts[
+            item.keyword
+          ] =
+            (
+              errorCounts[
+                item.keyword
+              ] ||
+              0
+            ) +
+            1;
+
+        }
+
+      }
+    );
+
+
+  const sentenceAccuracy =
+    typeof pa.accuracyScore ===
+      "number"
+
+      ? pa.accuracyScore
+
+      : null;
+
+
+  if (
+    sentenceAccuracy !== null &&
+    sentenceAccuracy <
+      SENTENCE_PASS_SCORE
+  ) {
+
+    allPassed =
+      false;
+
+  }
+
+
+  showEvaluation(
+    recognizedText,
+    evaluations,
+    pa,
+    allPassed
+  );
+
+}
+
+
+/* =========================================================
+   단어 판정
+========================================================= */
+
+function evaluateKeyword(
+  keyword,
+  azureWords,
+  recognized
+) {
+
+  const normalizedKeyword =
+    normalizeText(
+      keyword
+    );
+
+
+  const relatedScores =
+    [];
+
+
+  azureWords
+    .forEach(
+      function(item) {
+
+        const word =
+          normalizeText(
+            item.Word ||
+            ""
+          );
+
+
+        if (!word) {
+          return;
+        }
+
+
+        if (
+          normalizedKeyword
+            .includes(word)
+
+          ||
+
+          word
+            .includes(
+              normalizedKeyword
+            )
+        ) {
+
+          const pa =
+            item
+              .PronunciationAssessment ||
+            {};
+
+
+          if (
+            typeof pa.AccuracyScore ===
+            "number"
+          ) {
+
+            relatedScores
+              .push(
+                pa.AccuracyScore
+              );
+
+          }
+
+        }
+
+      }
+    );
+
+
+  if (
+    relatedScores.length
+  ) {
+
+    const average =
+      relatedScores.reduce(
+        function(a, b) {
+          return a + b;
+        },
+        0
+      ) /
+      relatedScores.length;
+
+
+    return {
+
+      keyword:
+        keyword,
+
+      score:
+        average,
+
+      passed:
+        average >=
+        WORD_PASS_SCORE
+
+    };
+
+  }
+
+
+  return {
+
+    keyword:
+      keyword,
+
+    score:
+      null,
+
+    passed:
+      recognized
+        .includes(
+          normalizedKeyword
+        )
+
+  };
+
+}
+
+
+/* =========================================================
+   결과 화면
+========================================================= */
+
+function showEvaluation(
+  recognizedText,
+  evaluations,
+  pa,
+  allPassed
+) {
+
+  document
+    .getElementById(
+      "resultArea"
+    )
+    .style.display =
+      "block";
+
+
+  document
+    .getElementById(
+      "recognizedText"
+    )
+    .innerHTML =
+      "<strong>AI 인식:</strong> " +
+      escapeHtml(
+        recognizedText ||
+        "인식 결과 없음"
+      );
+
+
+  const wordArea =
+    document
+      .getElementById(
+        "wordArea"
+      );
+
+
+  wordArea.innerHTML =
+    "";
+
+
+  evaluations
+    .forEach(
+      function(item) {
+
+        const span =
+          document
+            .createElement(
+              "span"
+            );
+
+
+        span.className =
+          "word " +
+          (
+            item.passed
+              ? "correct"
+              : "wrong"
+          );
+
+
+        span.textContent =
+          (
+            item.passed
+              ? "✓ "
+              : "✕ "
+          ) +
+          item.keyword +
+          (
+            item.score !== null
+              ? " " +
+                Math.round(
+                  item.score
+                )
+              : ""
+          );
+
+
+        wordArea
+          .appendChild(
+            span
+          );
+
+      }
+    );
+
+
+  const scores =
+    [];
+
+
+  if (
+    typeof pa.accuracyScore ===
+    "number"
+  ) {
+
+    scores.push(
+      "정확도 " +
+      Math.round(
+        pa.accuracyScore
+      )
+    );
+
+  }
+
+
+  if (
+    typeof pa.fluencyScore ===
+    "number"
+  ) {
+
+    scores.push(
+      "유창성 " +
+      Math.round(
+        pa.fluencyScore
+      )
+    );
+
+  }
+
+
+  if (
+    typeof pa.completenessScore ===
+    "number"
+  ) {
+
+    scores.push(
+      "완성도 " +
+      Math.round(
+        pa.completenessScore
+      )
+    );
+
+  }
+
+
+  if (
+    typeof pa.pronunciationScore ===
+    "number"
+  ) {
+
+    scores.push(
+      "발음 " +
+      Math.round(
+        pa.pronunciationScore
+      )
+    );
+
+  }
+
+
+  document
+    .getElementById(
+      "scoreArea"
+    )
+    .textContent =
+      scores.join(
+        " · "
+      );
+
+
+  if (allPassed) {
+
+    sentenceStatus[
+      currentQuestion
+    ] =
+      "통과";
+
+
+    document
+      .getElementById(
+        "messageArea"
+      )
+      .innerHTML =
+        '<span class="success">' +
+        '✅ 통과했습니다.' +
+        '</span>';
+
+
+    document
+      .getElementById(
+        "statusBox"
+      )
+      .innerHTML =
+        "잘했어요. 다음 문장으로 넘어가세요.";
+
+
+    document
+      .getElementById(
+        "nextButton"
+      )
+      .style.display =
+        "block";
+
+
+  } else {
+
+    sentenceStatus[
+      currentQuestion
+    ] =
+      "재도전";
+
+
+    const wrongWords =
+      evaluations
+        .filter(
+          function(item) {
+            return !item.passed;
+          }
+        )
+        .map(
+          function(item) {
+            return item.keyword;
+          }
+        );
+
+
+    document
+      .getElementById(
+        "messageArea"
+      )
+      .innerHTML =
+        '<span class="error">' +
+        '❌ 다시 연습해보세요.' +
+        '</span>' +
+
+        (
+          wrongWords.length
+            ? "<br>" +
+              wrongWords.join(
+                ", "
+              )
+            : ""
+        );
+
+
+    document
+      .getElementById(
+        "statusBox"
+      )
+      .innerHTML =
+        "빨간 단어의 발음을 다시 연습한 후 재도전하세요.";
+
+
+    document
+      .getElementById(
+        "nextButton"
+      )
+      .style.display =
+        "none";
+
+  }
+
+}
+
+
+/* =========================================================
+   오류
+========================================================= */
+
+function showAssessmentError(
+  error
+) {
+
+  const button =
+    document
+      .getElementById(
+        "recordButton"
+      );
+
+
+  button.disabled =
+    false;
+
+
+  button.textContent =
+    "🎤 다시 말하기";
+
+
+  document
+    .getElementById(
+      "statusBox"
+    )
+    .innerHTML =
+      '<span class="error">' +
+      '❌ 음성 분석 오류' +
+      '</span><br>' +
+      escapeHtml(
+        error ||
+        "알 수 없는 오류"
+      );
+
+}
+
+
+/* =========================================================
+   인식기 종료
+========================================================= */
+
+function closeRecognizer() {
+
+  if (recognizer) {
+
+    try {
+
+      recognizer.close();
+
+    } catch (e) {
+
+      console.error(e);
+
+    }
+
+
+    recognizer =
+      null;
+
+  }
+
+}
+
+
+/* =========================================================
+   다음 문제
+========================================================= */
+
+function nextQuestion() {
+
+  currentQuestion++;
+
+
+  if (
+    currentQuestion >=
+    sentences.length
+  ) {
+
+    showFinish();
+
+    return;
+  }
+
+
+  showQuestion();
+
+}
+
+
+/* =========================================================
+   완료
+========================================================= */
+
+function showFinish() {
+
+  document
+    .getElementById(
+      "testCard"
+    )
+    .style.display =
+      "none";
+
+
+  document
+    .getElementById(
+      "finishCard"
+    )
+    .style.display =
+      "block";
+
+
+  const wrongEntries =
+    Object.entries(
+      errorCounts
+    )
+    .sort(
+      function(a, b) {
+        return b[1] - a[1];
+      }
+    );
+
+
+  let html =
+    "<p><strong>총 말하기 횟수:</strong> " +
+    totalAttempts +
+    "회</p>";
+
+
+  if (
+    wrongEntries.length
+  ) {
+
+    html +=
+      "<p><strong>조금 더 연습할 단어</strong></p>";
+
+
+    wrongEntries
+      .forEach(
+        function(entry) {
+
+          html +=
+            escapeHtml(
+              entry[0]
+            ) +
+            " : " +
+            entry[1] +
+            "회<br>";
+
+        }
+      );
+
+  } else {
+
+    html +=
+      "<p>🎉 모든 문장을 한 번에 통과했습니다.</p>";
+
+  }
+
+
+  document
+    .getElementById(
+      "summary"
+    )
+    .innerHTML =
+      html;
+
+}
+
+
+/* =========================================================
+   결과 제출
+========================================================= */
+
+async function submitResult() {
+
+  const button =
+    document
+      .getElementById(
+        "submitButton"
+      );
+
+
+  button.disabled =
+    true;
+
+
+  button.textContent =
+    "제출 중...";
+
+
+  const data = {
+
+    studentNumber:
+      studentNumber,
+
+    studentName:
+      studentName,
+
+    sentenceStatus:
+      sentenceStatus,
+
+    attemptCounts:
+      attemptCounts,
+
+    totalAttempts:
+      totalAttempts,
+
+    errorCounts:
+      errorCounts
+
+  };
+
+
+  try {
+
+    const result =
+      await jsonpRequest(
+        "save",
+        {
+          data:
+            JSON.stringify(
+              data
+            )
+        }
+      );
+
+
+    if (
+      result &&
+      result.success
+    ) {
+
+      document
+        .getElementById(
+          "submitMessage"
+        )
+        .innerHTML =
+          '<span class="success">' +
+          '✅ ' +
+          escapeHtml(
+            result.message
+          ) +
+          '</span>';
+
+
+      button.textContent =
+        "제출 완료";
+
+    } else {
+
+      throw new Error(
+        result &&
+        result.message
+          ? result.message
+          : "제출 실패"
+      );
+
+    }
+
+
+  } catch (error) {
+
+    button.disabled =
+      false;
+
+
+    button.textContent =
+      "선생님에게 제출";
+
+
+    document
+      .getElementById(
+        "submitMessage"
+      )
+      .innerHTML =
+        '<span class="error">' +
+        '❌ ' +
+        escapeHtml(
+          error.message ||
+          String(error)
+        ) +
+        '</span>';
+
+  }
+
+}
+
+
+/* =========================================================
+   기타
+========================================================= */
+
+function normalizeText(
+  text
+) {
+
+  return String(
+    text ||
+    ""
+  )
+  .replace(
+    /[\s，。！？、,.!?；;：:"'“”‘’]/g,
+    ""
+  )
+  .trim();
+
+}
+
+
+function escapeHtml(
+  text
+) {
+
+  return String(
+    text
+  )
+  .replace(
+    /&/g,
+    "&amp;"
+  )
+  .replace(
+    /</g,
+    "&lt;"
+  )
+  .replace(
+    />/g,
+    "&gt;"
+  )
+  .replace(
+    /"/g,
+    "&quot;"
+  )
+  .replace(
+    /'/g,
+    "&#039;"
+  );
+
 }
 
 </script>
