@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>중국어 말하기 마이크 테스트</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 30px 20px;
+    }
+
+    .box {
+      max-width: 600px;
+      margin: auto;
+      background: white;
+      padding: 30px;
+      border-radius: 18px;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 25px;
+    }
+
+    .chinese {
+      font-size: 32px;
+      margin: 35px 0 8px;
+    }
+
+    .pinyin {
+      font-size: 19px;
+      color: #666;
+      margin-bottom: 30px;
+    }
+
+    button {
+      width: 100%;
+      padding: 17px;
+      margin-top: 12px;
+      border: 0;
+      border-radius: 10px;
+      font-size: 18px;
+    }
+
+    .listen {
+      background: #e8edf3;
+    }
+
+    .record {
+      background: #42964e;
+      color: white;
+    }
+
+    .stop {
+      background: #e4574d;
+      color: white;
+    }
+
+    #result {
+      margin-top: 25px;
+      padding: 15px;
+      background: #f5f5f5;
+      border-radius: 10px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="box">
+
+  <h1>🇨🇳 중국어 AI 말하기 형성평가</h1>
+
+  <div class="chinese">
+    你好！我叫张丽丽。
+  </div>
+
+  <div class="pinyin">
+    Nǐ hǎo! Wǒ jiào Zhāng Lìli.
+  </div>
+
+  <button class="listen" onclick="playChinese()">
+    🔊 음원 듣기
+  </button>
+
+  <button id="recordButton"
+          class="record"
+          onclick="toggleRecording()">
+    🎤 말하기 시작
+  </button>
+
+  <div id="result">
+    마이크 작동 여부를 확인합니다.
+  </div>
+
+</div>
+
+
+<script>
+
+let recorder;
+let stream;
+let recording = false;
+
+function playChinese() {
+
+  speechSynthesis.cancel();
+
+  const utterance =
+    new SpeechSynthesisUtterance(
+      "你好！我叫张丽丽。"
+    );
+
+  utterance.lang = "zh-CN";
+  utterance.rate = 0.8;
+
+  speechSynthesis.speak(utterance);
+}
+
+
+async function toggleRecording() {
+
+  if (recording) {
+
+    recorder.stop();
+
+    stream.getTracks().forEach(
+      track => track.stop()
+    );
+
+    recording = false;
+
+    const button =
+      document.getElementById("recordButton");
+
+    button.textContent =
+      "🎤 다시 말하기";
+
+    button.className =
+      "record";
+
+    return;
+  }
+
+
+  try {
+
+    stream =
+      await navigator.mediaDevices.getUserMedia({
+        audio: true
+      });
+
+    recorder =
+      new MediaRecorder(stream);
+
+    recorder.start();
+
+    recording = true;
+
+    const button =
+      document.getElementById("recordButton");
+
+    button.textContent =
+      "⏹ 말하기 끝내기";
+
+    button.className =
+      "stop";
+
+
+    document.getElementById("result").innerHTML =
+      "✅ <strong>마이크 연결 성공</strong><br>" +
+      "지금 말해보세요.";
+
+  }
+
+  catch(error) {
+
+    document.getElementById("result").innerHTML =
+      "❌ 마이크 오류<br>" +
+      error.name +
+      "<br>" +
+      error.message;
+  }
+}
+
+</script>
+
+</body>
+</html>
