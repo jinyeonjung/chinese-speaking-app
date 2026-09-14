@@ -1540,7 +1540,7 @@ function evaluateKeyword(
 
       passed:
         average >=
-        WORD_PASS_SCORE
+        (keyword === "怎么样" ? 50 : WORD_PASS_SCORE)
 
     };
 
