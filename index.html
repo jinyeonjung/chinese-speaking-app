@@ -358,8 +358,8 @@ const sentences = [
 ];
 
 
-const WORD_PASS_SCORE = 70;
-const SENTENCE_PASS_SCORE = 70;
+const WORD_PASS_SCORE = 60;
+const SENTENCE_PASS_SCORE = 60;
 
 
 let currentQuestion = 0;
@@ -378,6 +378,14 @@ let errorCounts = {};
 let totalAttempts = 0;
 
 let recognizer = null;
+let recognitionTimer = null;
+
+// Azure 임시 토큰은 약 10분 동안 사용할 수 있으므로
+// 매 시도마다 새로 받지 않고 8분 동안 재사용합니다.
+let cachedSpeechToken = null;
+let cachedSpeechRegion = null;
+let tokenFetchedAt = 0;
+const TOKEN_CACHE_MS = 8 * 60 * 1000;
 
 
 /* =========================================================
@@ -420,6 +428,10 @@ function startTest() {
 
 
   showQuestion();
+
+  // 학생이 첫 문장을 확인하는 동안 Azure 토큰을 미리 준비합니다.
+  // 실패하더라도 실제 말하기 버튼을 누를 때 다시 시도합니다.
+  preloadSpeechToken();
 
 }
 
@@ -636,6 +648,23 @@ function jsonpRequest(action, params = {}) {
 
 async function getSpeechToken() {
 
+  const now = Date.now();
+
+  if (
+    cachedSpeechToken &&
+    cachedSpeechRegion &&
+    (now - tokenFetchedAt) < TOKEN_CACHE_MS
+  ) {
+
+    return {
+      success: true,
+      token: cachedSpeechToken,
+      region: cachedSpeechRegion
+    };
+
+  }
+
+
   const result =
     await jsonpRequest(
       "token"
@@ -657,7 +686,24 @@ async function getSpeechToken() {
   }
 
 
+  cachedSpeechToken = result.token;
+  cachedSpeechRegion = result.region;
+  tokenFetchedAt = now;
+
   return result;
+
+}
+
+
+function preloadSpeechToken() {
+
+  getSpeechToken()
+    .catch(function(error) {
+      console.warn(
+        "Azure 토큰 사전 준비 실패 - 말하기 시작 시 다시 시도합니다.",
+        error
+      );
+    });
 
 }
 
@@ -675,6 +721,10 @@ async function startAssessment() {
       );
 
 
+  // 혹시 이전 인식기가 남아 있으면 먼저 정리합니다.
+  closeRecognizer();
+
+
   button.disabled =
     true;
 
@@ -688,7 +738,7 @@ async function startAssessment() {
       "statusBox"
     )
     .innerHTML =
-      "Azure AI에 연결하고 있습니다...";
+      "마이크를 준비하고 있습니다...";
 
 
   document
@@ -730,6 +780,27 @@ async function startAssessment() {
         "zh-CN";
 
 
+    // 학생이 말을 끝낸 뒤 약 0.8초 정도 조용하면
+    // 한 문장이 끝난 것으로 판단하도록 합니다.
+    // 너무 오래 기다리지 않으면서 문장 중간이 잘리는 것도 줄입니다.
+    try {
+
+      speechConfig.setProperty(
+        SpeechSDK.PropertyId
+          .Speech_SegmentationSilenceTimeoutMs,
+        "800"
+      );
+
+    } catch (e) {
+
+      console.warn(
+        "무음 종료 시간 설정을 적용하지 못했습니다.",
+        e
+      );
+
+    }
+
+
     const audioConfig =
       SpeechSDK.AudioConfig
         .fromDefaultMicrophoneInput();
@@ -755,7 +826,7 @@ async function startAssessment() {
         );
 
 
-    recognizer =
+    const localRecognizer =
       new SpeechSDK
         .SpeechRecognizer(
 
@@ -766,44 +837,369 @@ async function startAssessment() {
         );
 
 
+    recognizer =
+      localRecognizer;
+
+
     pronunciationConfig
       .applyTo(
-        recognizer
+        localRecognizer
       );
 
 
-    button.textContent =
-      "🎙️ 지금 말하세요";
+    let finished =
+      false;
+
+    let attemptCounted =
+      false;
+
+    let readyShown =
+      false;
 
 
-    document
-      .getElementById(
-        "statusBox"
-      )
-      .innerHTML =
-        "🎤 <strong>듣고 있습니다.</strong><br>" +
-        "문장을 자연스럽게 말해주세요.";
+    function showReady() {
+
+      if (readyShown || finished) {
+        return;
+      }
+
+      readyShown =
+        true;
+
+      button.textContent =
+        "🎙️ 지금 말하세요";
+
+      document
+        .getElementById(
+          "statusBox"
+        )
+        .innerHTML =
+          "🎤 <strong>지금 말하세요.</strong><br>" +
+          "문장을 자연스럽게 한 번 말해주세요.";
 
 
-    totalAttempts++;
+      if (!attemptCounted) {
 
-    attemptCounts[
-      currentQuestion
-    ]++;
+        attemptCounted =
+          true;
+
+        totalAttempts++;
+
+        attemptCounts[
+          currentQuestion
+        ]++;
+
+      }
 
 
-    recognizer
-      .recognizeOnceAsync(
+      clearTimeout(
+        recognitionTimer
+      );
 
-        function(result) {
+      // 전체 대기 시간이 길어지지 않도록 최대 7초까지만 듣습니다.
+      recognitionTimer =
+        setTimeout(
+          function() {
 
-          handleRecognitionResult(
+            finishWithError(
+              "음성을 인식하지 못했어요. 다시 말하기 버튼을 눌러 한 번 더 말해주세요."
+            );
+
+          },
+          7000
+        );
+
+    }
+
+
+    function finishWithResult(result) {
+
+      if (finished) {
+        return;
+      }
+
+      finished =
+        true;
+
+      clearTimeout(
+        recognitionTimer
+      );
+
+      recognitionTimer =
+        null;
+
+
+      try {
+
+        localRecognizer
+          .stopContinuousRecognitionAsync(
+
+            function() {
+
+              try {
+                localRecognizer.close();
+              } catch (e) {
+                console.error(e);
+              }
+
+              if (
+                recognizer ===
+                localRecognizer
+              ) {
+                recognizer = null;
+              }
+
+              handleRecognitionResult(
+                result
+              );
+
+            },
+
+            function(error) {
+
+              console.warn(
+                "연속 인식 종료 중 오류",
+                error
+              );
+
+              try {
+                localRecognizer.close();
+              } catch (e) {
+                console.error(e);
+              }
+
+              if (
+                recognizer ===
+                localRecognizer
+              ) {
+                recognizer = null;
+              }
+
+              handleRecognitionResult(
+                result
+              );
+
+            }
+
+          );
+
+      } catch (e) {
+
+        console.warn(e);
+
+        try {
+          localRecognizer.close();
+        } catch (closeError) {
+          console.error(closeError);
+        }
+
+        if (
+          recognizer ===
+          localRecognizer
+        ) {
+          recognizer = null;
+        }
+
+        handleRecognitionResult(
+          result
+        );
+
+      }
+
+    }
+
+
+    function finishWithError(message) {
+
+      if (finished) {
+        return;
+      }
+
+      finished =
+        true;
+
+      clearTimeout(
+        recognitionTimer
+      );
+
+      recognitionTimer =
+        null;
+
+
+      try {
+
+        localRecognizer
+          .stopContinuousRecognitionAsync(
+
+            function() {
+
+              try {
+                localRecognizer.close();
+              } catch (e) {
+                console.error(e);
+              }
+
+              if (
+                recognizer ===
+                localRecognizer
+              ) {
+                recognizer = null;
+              }
+
+              showAssessmentError(
+                message
+              );
+
+            },
+
+            function() {
+
+              try {
+                localRecognizer.close();
+              } catch (e) {
+                console.error(e);
+              }
+
+              if (
+                recognizer ===
+                localRecognizer
+              ) {
+                recognizer = null;
+              }
+
+              showAssessmentError(
+                message
+              );
+
+            }
+
+          );
+
+      } catch (e) {
+
+        try {
+          localRecognizer.close();
+        } catch (closeError) {
+          console.error(closeError);
+        }
+
+        if (
+          recognizer ===
+          localRecognizer
+        ) {
+          recognizer = null;
+        }
+
+        showAssessmentError(
+          message
+        );
+
+      }
+
+    }
+
+
+    localRecognizer.sessionStarted =
+      function() {
+        showReady();
+      };
+
+
+    localRecognizer.speechStartDetected =
+      function() {
+
+        if (finished) {
+          return;
+        }
+
+        document
+          .getElementById(
+            "statusBox"
+          )
+          .innerHTML =
+            "🎤 <strong>듣고 있습니다.</strong><br>" +
+            "끝까지 자연스럽게 말해주세요.";
+
+      };
+
+
+    localRecognizer.recognized =
+      function(sender, event) {
+
+        if (finished) {
+          return;
+        }
+
+        const result =
+          event.result;
+
+
+        if (
+          result.reason ===
+          SpeechSDK.ResultReason
+            .RecognizedSpeech &&
+          normalizeText(
+            result.text
+          )
+        ) {
+
+          finishWithResult(
             result
           );
 
+          return;
+        }
 
-          closeRecognizer();
 
+        // NoMatch가 한 번 발생했다고 즉시 오류 처리하지 않습니다.
+        // 학생이 같은 녹음 세션 안에서 한 번 더 말할 기회를 줍니다.
+        if (
+          result.reason ===
+          SpeechSDK.ResultReason
+            .NoMatch
+        ) {
+
+          document
+            .getElementById(
+              "statusBox"
+            )
+            .innerHTML =
+              "🎤 잘 안 들렸어요.<br>" +
+              "<strong>한 번만 더 또렷하게 말해주세요.</strong>";
+
+        }
+
+      };
+
+
+    localRecognizer.canceled =
+      function(sender, event) {
+
+        if (finished) {
+          return;
+        }
+
+        console.error(
+          "Azure 음성 인식 취소:",
+          event.errorDetails || event.reason
+        );
+
+        finishWithError(
+          "음성 연결이 잠시 불안정했어요. 다시 말하기 버튼을 눌러주세요."
+        );
+
+      };
+
+
+    localRecognizer
+      .startContinuousRecognitionAsync(
+
+        function() {
+          // 일부 환경에서 sessionStarted 표시가 늦는 경우를 대비한 보조 처리
+          setTimeout(
+            showReady,
+            150
+          );
         },
 
         function(error) {
@@ -812,13 +1208,9 @@ async function startAssessment() {
             error
           );
 
-
-          showAssessmentError(
-            error
+          finishWithError(
+            "마이크를 시작하지 못했어요. 다시 시도해주세요."
           );
-
-
-          closeRecognizer();
 
         }
 
@@ -1476,21 +1868,51 @@ function showAssessmentError(
 
 function closeRecognizer() {
 
+  clearTimeout(
+    recognitionTimer
+  );
+
+  recognitionTimer =
+    null;
+
+
   if (recognizer) {
 
-    try {
-
-      recognizer.close();
-
-    } catch (e) {
-
-      console.error(e);
-
-    }
-
+    const oldRecognizer =
+      recognizer;
 
     recognizer =
       null;
+
+    try {
+
+      oldRecognizer
+        .stopContinuousRecognitionAsync(
+          function() {
+            try {
+              oldRecognizer.close();
+            } catch (e) {
+              console.error(e);
+            }
+          },
+          function() {
+            try {
+              oldRecognizer.close();
+            } catch (e) {
+              console.error(e);
+            }
+          }
+        );
+
+    } catch (e) {
+
+      try {
+        oldRecognizer.close();
+      } catch (closeError) {
+        console.error(closeError);
+      }
+
+    }
 
   }
 
